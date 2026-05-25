@@ -1,0 +1,51 @@
+{
+  "permissions": {
+    "allow": [
+      {
+        "prompt": "run make verify",
+        "tool": "Bash"
+      },
+      {
+        "prompt": "run make verify-full",
+        "tool": "Bash"
+      },
+      {
+        "prompt": "run make lint",
+        "tool": "Bash"
+      },
+      {
+        "prompt": "run make typecheck",
+        "tool": "Bash"
+      },
+      {
+        "prompt": "run make test-critical",
+        "tool": "Bash"
+      },
+      {
+        "prompt": "run make test-full",
+        "tool": "Bash"
+      },
+      {
+        "prompt": "run make clean",
+        "tool": "Bash"
+      },
+      {
+        "prompt": "run make lint-fix",
+        "tool": "Bash"
+      },
+      {
+        "prompt": "run ruff check",
+        "tool": "Bash"
+      },
+      {
+        "prompt": "run pyright",
+        "tool": "Bash"
+      },
+      {
+        "prompt": "run pytest",
+        "tool": "Bash"
+      }
+    ]
+  },
+  "recommended": true
+}

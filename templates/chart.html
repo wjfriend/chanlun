@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>缠论分析 - 图表</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        /* ===== 布局 ===== */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 24px;
+            background-color: #16213e;
+            border-bottom: 1px solid #2a2a4a;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header h2 { color: #e94560; font-size: 1.2rem; }
+
+        .symbol-badge {
+            background-color: #e94560;
+            color: white;
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+        .symbol-badge:hover { background-color: #ff6b6b; }
+
+        /* ===== 工具栏 ===== */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 5px 12px;
+            font-size: 0.8rem;
+            background: #2a2a4a;
+            color: #aaa;
+            border: 1px solid #3a3a5a;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn:hover { background: #3a3a6a; color: #fff; }
+        .btn.active {
+            background: #e94560;
+            color: white;
+            border-color: #e94560;
+        }
+
+        /* ===== 主图表区域 ===== */
+        .main-area {
+            display: flex;
+            height: calc(100vh - 110px);
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+
+        #mainChart {
+            flex: 1;
+            min-width: 800px;
+            height: 100%;
+        }
+
+        /* ===== 指标面板选择器（右侧） ===== */
+        .indicator-panel {
+            width: 140px;
+            background: #16213e;
+            border-left: 1px solid #2a2a4a;
+            padding: 12px 8px;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .panel-title {
+            color: #666;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #2a2a4a;
+        }
+
+        .indicator-group { margin-bottom: 16px; }
+
+        .ind-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 0;
+            cursor: pointer;
+            font-size: 0.8rem;
+            color: #888;
+        }
+        .ind-item:hover { color: #fff; }
+        .ind-item input[type="checkbox"] {
+            accent-color: #e94560;
+            width: 13px;
+            height: 13px;
+        }
+        .ind-item.active { color: #e0e0e0; }
+
+        /* ===== 加载遮罩 ===== */
+        .loading-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(26, 26, 46, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        .loading-overlay.hidden { display: none; }
+
+        /* ===== 错误显示 ===== */
+        .error-container {
+            max-width: 500px;
+            text-align: center;
+            padding: 40px;
+        }
+
+        /* ===== K线样式开关样式 ===== */
+        .kline-toggle {
+            display: flex;
+            background: #2a2a4a;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid #3a3a5a;
+        }
+        .kline-toggle .btn {
+            border-radius: 0;
+            border: none;
+            background: transparent;
+        }
+        .kline-toggle .btn.active {
+            background: #e94560;
+        }
+
+        .back-btn {
+            padding: 5px 14px;
+            font-size: 0.8rem;
+            background-color: #2a2a4a;
+            border: 1px solid #3a3a5a;
+            color: #aaa;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .back-btn:hover { background: #3a3a6a; color: #fff; }
+
+        /* 买卖点标注样式说明 */
+        .legend-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            font-size: 0.75rem;
+            color: #888;
+        }
+        .legend-item { display: flex; align-items: center; gap: 4px; }
+        .swatch {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 头部 -->
+    <div class="header">
+        <div class="header-left">
+            <h2>缠论分析</h2>
+            <span class="symbol-badge" id="symbolBadge">000001</span>
+            <div class="legend-row" style="margin-left:8px;">
+                <span class="legend-item"><span class="swatch" style="background:#e94560;"></span>↑笔(红)</span>
+                <span class="legend-item"><span class="swatch" style="background:#26a69a;"></span>↓笔(绿)</span>
+                <span class="legend-item"><span class="swatch" style="background:#2979ff;"></span>↑段(蓝)</span>
+                <span class="legend-item"><span class="swatch" style="background:#7c4dff;"></span>↓段(紫)</span>
+                <span class="legend-item"><span class="swatch" style="background:rgba(255,215,0,0.5);border:1px solid #ffd700;"></span>中枢</span>
+                <span class="legend-item"><span class="swatch" style="background:#e94560;border-radius:50%;"></span>买(红▲)</span>
+                <span class="legend-item"><span class="swatch" style="background:#26a69a;border-radius:50%;"></span>卖(绿▼)</span>
+            </div>
+        </div>
+        <div class="toolbar">
+            <!-- K线周期选择 -->
+            <select id="periodSelect" onchange="changePeriod(this.value)" style="
+                padding: 5px 10px;
+                font-size: 0.8rem;
+                background: #2a2a4a;
+                color: #aaa;
+                border: 1px solid #3a3a5a;
+                border-radius: 6px;
+                cursor: pointer;
+                min-width: 100px;
+            ">
+                <option value="daily">日线</option>
+                <option value="weekly">周线</option>
+                <option value="monthly">月线</option>
+                <option value="60">60分钟</option>
+                <option value="30">30分钟</option>
+                <option value="15">15分钟</option>
+                <option value="5">5分钟</option>
+                <option value="1">1分钟</option>
+            </select>
+            <!-- K线样式切换 -->
+            <div class="kline-toggle">
+                <button class="btn active" id="btnKlineStandard" onclick="setKlineStyle('standard')">标准K线</button>
+                <button class="btn" id="btnKlineChan" onclick="setKlineStyle('chan')">缠论K线</button>
+            </div>
+            <button class="btn back-btn" onclick="window.location.href='/'">返回</button>
+        </div>
+    </div>
+
+    <!-- 加载遮罩 -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <p style="margin-top: 16px; color: #888;">正在加载K线数据...</p>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="main-area">
+        <div id="mainChart"></div>
+
+        <!-- 右侧指标面板 -->
+        <div class="indicator-panel">
+            <div class="indicator-group">
+                <div class="panel-title">可选指标</div>
+                <label class="ind-item active">
+                    <input type="checkbox" id="indMA" checked onchange="toggleIndicator('MA', this.checked)">
+                    MA均线
+                </label>
+                <label class="ind-item active">
+                    <input type="checkbox" id="indBOLL" checked onchange="toggleIndicator('BOLL', this.checked)">
+                    BOLL布林
+                </label>
+                <label class="ind-item active">
+                    <input type="checkbox" id="indMACD" checked onchange="toggleIndicator('MACD', this.checked)">
+                    MACD
+                </label>
+                <label class="ind-item">
+                    <input type="checkbox" id="indRSI" onchange="toggleIndicator('RSI', this.checked)">
+                    RSI
+                </label>
+                <label class="ind-item">
+                    <input type="checkbox" id="indKDJ" onchange="toggleIndicator('KDJ', this.checked)">
+                    KDJ
+                </label>
+                <label class="ind-item">
+                    <input type="checkbox" id="indCCI" onchange="toggleIndicator('CCI', this.checked)">
+                    CCI
+                </label>
+                <label class="ind-item">
+                    <input type="checkbox" id="indOBV" onchange="toggleIndicator('OBV', this.checked)">
+                    OBV
+                </label>
+                <label class="ind-item">
+                    <input type="checkbox" id="indStochRSI" onchange="toggleIndicator('StochRSI', this.checked)">
+                    StochRSI
+                </label>
+            </div>
+
+            <div class="indicator-group">
+                <div class="panel-title">缠论显示</div>
+                <label class="ind-item active">
+                    <input type="checkbox" id="showBi" checked onchange="toggleChanElement('bi', this.checked)">
+                    笔
+                </label>
+                <label class="ind-item active">
+                    <input type="checkbox" id="showSegment" checked onchange="toggleChanElement('segment', this.checked)">
+                    线段
+                </label>
+                <label class="ind-item active">
+                    <input type="checkbox" id="showBiZhongshu" checked onchange="toggleChanElement('bi_zhongshu', this.checked)">
+                    笔中枢
+                </label>
+                <label class="ind-item active">
+                    <input type="checkbox" id="showSegZhongshu" checked onchange="toggleChanElement('segment_zhongshu', this.checked)">
+                    线段中枢
+                </label>
+            </div>
+
+            <div class="indicator-group">
+                <div class="panel-title">买卖点显示</div>
+                <label class="ind-item" id="indBuy1"><input type="checkbox" checked onchange="toggleSignal('buy_1',this.checked)"> 1买</label>
+                <label class="ind-item" id="indBuy2"><input type="checkbox" checked onchange="toggleSignal('buy_2',this.checked)"> 2买</label>
+                <label class="ind-item" id="indBuy3"><input type="checkbox" checked onchange="toggleSignal('buy_3',this.checked)"> 3买</label>
+                <label class="ind-item" id="indSell1"><input type="checkbox" checked onchange="toggleSignal('sell_1',this.checked)"> 1卖</label>
+                <label class="ind-item" id="indSell2"><input type="checkbox" checked onchange="toggleSignal('sell_2',this.checked)"> 2卖</label>
+                <label class="ind-item" id="indSell3"><input type="checkbox" checked onchange="toggleSignal('sell_3',this.checked)"> 3卖</label>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/main.js"></script>
+    <script>
+        // 初始化
+        const urlParams = new URLSearchParams(window.location.search);
+        const stockCode = urlParams.get('code') || '000001';
+        const period = urlParams.get('period') || 'daily';
+
+        document.getElementById('symbolBadge').textContent = stockCode;
+        document.getElementById('symbolBadge').onclick = () => { window.location.href = '/'; };
+
+        // 设置周期选择器的值
+        const periodSelect = document.getElementById('periodSelect');
+        if (periodSelect) {
+            periodSelect.value = period;
+        }
+
+        // 启动
+        loadChanData(stockCode, period);
+    </script>
+</body>
+</html>

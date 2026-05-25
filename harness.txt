@@ -1,0 +1,14 @@
+我要初始化 Harness 基础设施。以下是我的项目信息：
+项目名: [chanlun]
+描述: [缠论画线分析选股策略]
+语言框架: [Python为主，其他根据需求你再推荐]
+工具命令: [Lint: ruff check . / 类型: pyright / 测试: pytest]
+架构约束: [api/ 只做参数校验和协议转换, 业务逻辑放 services/, 数据库操作放 repositories/, 路由层不许直接查数据库]
+请一次性创建以下文件:
+CLAUDE.md — 包含以下章节: Project Overview / Commands / Architecture / Constraints / Testing / Conventions / Self-Check(6 条自检 + 纠正) / Self-Heal Protocol(make verify 失败后最多 3 轮自动修复) / Change Log
+Makefile — targets: verify / verify-full / lint / typecheck / test-critical / test-full
+DECISIONS.md — 决策记录文件, 包含模板和示例条目
+.claude/settings.json — 保留当前设置外，授权执行 make verify 等命令
+每个文件写完整内容, 不要省略。建完后跑 make verify。
+这只是当前项目的，全局的CLAUDE.md你可以根据情况先建立一个文件在C:\Users\admin2.WWLLL\.claude
+未来全局规则类md添加到C:\Users\admin2.WWLLL\.claude\rules，当前项目文档添加到E:\WW\chanlun\docs

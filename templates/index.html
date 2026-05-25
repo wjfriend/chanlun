@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>缠论画图工具</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>缠论画图工具</h1>
+        <p class="subtitle">基于标准缠论算法的交互式行情分析</p>
+
+        <div class="input-group">
+            <input type="text" id="stockCode" placeholder="股票代码" value="000001">
+            <button onclick="analyzeStock()">分析(Plotly)</button>
+            <button onclick="analyzeStockTV()" style="background:#16213e;border-color:#3a3a5a;">分析(TradingView)</button>
+        </div>
+
+        <p class="example">
+            示例代码：
+            <span onclick="setCode('000001')">平安银行</span> |
+            <span onclick="setCode('600519')">贵州茅台</span> |
+            <span onclick="setCode('000002')">万科A</span> |
+            <span onclick="setCode('600036')">招商银行</span>
+        </p>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 15px; color: #888;">正在加载数据...</p>
+        </div>
+
+        <div class="error" id="error"></div>
+    </div>
+
+    <div class="features">
+        <div class="feature">
+            <h3>分型识别</h3>
+            <p>自动识别顶分型<br>和底分型</p>
+        </div>
+        <div class="feature">
+            <h3>笔构建</h3>
+            <p>连接顶底分型<br>形成笔</p>
+        </div>
+        <div class="feature">
+            <h3>中枢分析</h3>
+            <p>识别中枢区间<br>判断走势方向</p>
+        </div>
+    </div>
+
+    <script>
+        function setCode(code) {
+            document.getElementById('stockCode').value = code;
+            analyzeStock();
+        }
+
+        function analyzeStock() {
+            const code = document.getElementById('stockCode').value.trim();
+            if (!code) {
+                showError('请输入股票代码');
+                return;
+            }
+
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('error').classList.remove('show');
+
+            window.location.href = '/chart?code=' + code;
+        }
+
+        function analyzeStockTV() {
+            const code = document.getElementById('stockCode').value.trim();
+            if (!code) {
+                showError('请输入股票代码');
+                return;
+            }
+
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('error').classList.remove('show');
+
+            window.location.href = '/tv_chart?code=' + code;
+        }
+
+        function showError(msg) {
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = msg;
+            errorEl.classList.add('show');
+        }
+
+        // 回车键支持
+        document.getElementById('stockCode').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                analyzeStock();
+            }
+        });
+    </script>
+</body>
+</html>

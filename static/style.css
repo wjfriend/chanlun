@@ -1,0 +1,157 @@
+/* 缠论画图工具 - 深色主题样式 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background-color: #1a1a2e;
+    color: #e0e0e0;
+    min-height: 100vh;
+    overflow-x: auto;
+    overflow-y: auto;
+}
+
+.container {
+    text-align: center;
+    padding: 40px;
+    max-width: 600px;
+}
+
+h1 {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    color: #e94560;
+}
+
+.subtitle {
+    color: #888;
+    margin-bottom: 40px;
+    font-size: 1.1rem;
+}
+
+.input-group {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+input[type="text"] {
+    padding: 12px 20px;
+    font-size: 1.1rem;
+    border: 2px solid #16213e;
+    border-radius: 8px;
+    background-color: #16213e;
+    color: #e0e0e0;
+    width: 200px;
+    transition: border-color 0.3s;
+}
+
+input[type="text"]:focus {
+    outline: none;
+    border-color: #e94560;
+}
+
+input[type="text"]::placeholder {
+    color: #666;
+}
+
+button {
+    padding: 12px 30px;
+    font-size: 1.1rem;
+    background-color: #e94560;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.2s;
+}
+
+button:hover {
+    background-color: #ff6b6b;
+    transform: translateY(-2px);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+.example {
+    color: #666;
+    font-size: 0.9rem;
+    margin-top: 15px;
+}
+
+.example span {
+    color: #e94560;
+    cursor: pointer;
+}
+
+.example span:hover {
+    text-decoration: underline;
+}
+
+.loading {
+    margin-top: 30px;
+    display: none;
+}
+
+.loading.show {
+    display: block;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #16213e;
+    border-top-color: #e94560;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.error {
+    color: #e94560;
+    margin-top: 20px;
+    padding: 15px;
+    background-color: rgba(233, 69, 96, 0.1);
+    border-radius: 8px;
+    display: none;
+}
+
+.error.show {
+    display: block;
+}
+
+.features {
+    margin-top: 50px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    text-align: center;
+}
+
+.feature {
+    padding: 20px;
+    background-color: #16213e;
+    border-radius: 12px;
+}
+
+.feature h3 {
+    color: #e94560;
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+}
+
+.feature p {
+    color: #888;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}

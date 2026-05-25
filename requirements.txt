@@ -1,0 +1,9 @@
+# Core dependencies
+flask>=3.0.0
+akshare>=1.12.0
+pandas>=2.0.0
+numpy>=1.24.0
+plotly>=5.18.0
+
+# Optional
+# pandas-ta>=0.8.0
