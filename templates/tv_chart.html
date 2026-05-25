@@ -35,6 +35,14 @@
         }
         .symbol-badge:hover { background: #ff6b6b; }
         .controls { display: flex; align-items: center; gap: 8px; }
+        .period-tabs { display: flex; gap: 2px; margin-left: 8px; }
+        .period-tab {
+            padding: 4px 10px; font-size: 0.72rem; background: #2a2a4a;
+            color: #777; border: 1px solid #3a3a5a; border-radius: 5px;
+            cursor: pointer; transition: all 0.2s; font-family: inherit;
+        }
+        .period-tab:hover { background: #3a3a6a; color: #ccc; }
+        .period-tab.active { background: #e94560; color: white; border-color: #e94560; }
         select, .btn {
             padding: 4px 10px; font-size: 0.75rem; background: #2a2a4a;
             color: #aaa; border: 1px solid #3a3a5a; border-radius: 5px; cursor: pointer;
@@ -148,17 +156,17 @@
             <input type="text" id="headerCodeInput" placeholder="代码" value="000001" style="padding:3px 8px;font-size:0.75rem;background:#2a2a4a;color:#fff;border:1px solid #3a3a5a;border-radius:5px;width:80px;">&nbsp;
         </div>
         <div class="controls">
-            <select id="periodSelect">
-                <option value="1">1分</option>
-                <option value="5">5分</option>
-                <option value="15">15分</option>
-                <option value="30">30分</option>
-                <option value="60">60分</option>
-                <option value="120">4小时</option>
-                <option value="daily" selected>日线</option>
-                <option value="weekly">周线</option>
-                <option value="monthly">月线</option>
-            </select>
+        <div class="period-tabs">
+            <button class="period-tab" data-period="1">M1</button>
+            <button class="period-tab" data-period="5">M5</button>
+            <button class="period-tab" data-period="15">M15</button>
+            <button class="period-tab" data-period="30">M30</button>
+            <button class="period-tab" data-period="60">H1</button>
+            <button class="period-tab" data-period="120">H4</button>
+            <button class="period-tab" data-period="daily">日</button>
+            <button class="period-tab" data-period="weekly">周</button>
+            <button class="period-tab" data-period="monthly">月</button>
+        </div>
             <a href="/" class="btn btn-dim">返回</a>
         </div>
     </div>
@@ -874,14 +882,24 @@
             const cont = document.getElementById('chart-container');
             console.log('[DEBUG] DOM ready, container:', cont ? cont.offsetWidth + 'x' + cont.offsetHeight : 'not found');
 
-            // 注册周期切换事件 (等 DOM 就绪)
-            document.getElementById('periodSelect').addEventListener('change', function() {
-                window.location.href = `/tv_chart?code=${currentCode}&period=${this.value}`;
+            // 周期 Tab 高亮
+            document.querySelectorAll('.period-tab').forEach(tab => {
+                if (tab.dataset.period === currentPeriod) {
+                    tab.classList.add('active');
+                }
+            });
+
+            // 注册周期 Tab 点击切换
+            document.querySelectorAll('.period-tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    document.querySelectorAll('.period-tab').forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    window.location.href = `/tv_chart?code=${currentCode}&period=${this.dataset.period}`;
+                });
             });
 
             // UI 初始化 (DOM 已就绪)
             document.getElementById('symbolBadge').textContent = currentCode;
-            document.getElementById('periodSelect').value = currentPeriod;
             document.getElementById('headerCodeInput').value = currentCode;
             document.getElementById('periodLabel').textContent = {
                 '1': '1分', '5': '5分', '15': '15分', '30': '30分',

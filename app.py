@@ -191,6 +191,42 @@ def _fetch_sina_minute(symbol: str, period: str = "30") -> pd.DataFrame | None:
         return None
 
 
+def _fetch_akshare_minute(symbol: str, period: str = "5") -> pd.DataFrame | None:
+    """用 akshare stock_zh_a_hist_min_em 获取分钟K线数据。"""
+    try:
+        df = ak.stock_zh_a_hist_min_em(
+            symbol=symbol,
+            start_date="1979-09-01 09:32:00",
+            end_date="2222-01-01 09:32:00",
+            period=period,
+            adjust=""
+        )
+        rows = []
+        for _, row in df.iterrows():
+            rows.append({
+                "date": pd.to_datetime(row["时间"]),
+                "open": float(row["开盘"]),
+                "close": float(row["收盘"]),
+                "high": float(row["最高"]),
+                "low": float(row["最低"]),
+                "volume": float(row["成交量"]),
+            })
+        result = pd.DataFrame(rows)
+        if result.empty:
+            return None
+        result.set_index("date", inplace=True)
+        return result
+    except Exception:
+        return None
+
+
+def _format_kline_date(dt, period: str) -> str:
+    """格式化K线日期，分钟数据包含时间。"""
+    if period in ("1", "5", "15", "30", "60", "120"):
+        return dt.strftime("%Y-%m-%d %H:%M")
+    return dt.strftime("%Y-%m-%d")
+
+
 def get_stock_data(symbol: str, start: str | None = None, end: str | None = None, period: str = "daily") -> pd.DataFrame:
     """获取A股 K线数据，分钟线优先新浪财经（日/周/月线用腾讯财经）。"""
     if start is None:
@@ -201,15 +237,17 @@ def get_stock_data(symbol: str, start: str | None = None, end: str | None = None
     if end is None:
         end = datetime.now().strftime("%Y%m%d")
 
-    # 分钟级别：优先新浪财经，失败则尝试东方财富
+    # 分钟级别：优先 akshare，失败则新浪，最后东方财富
     if period in ("1", "5", "15", "30", "60", "120"):
-        df = _fetch_sina_minute(symbol, period)
+        df = _fetch_akshare_minute(symbol, period)
         if df is not None:
             return df
-        # 新浪失败则尝试东方财富（可能需要 curl_cffi）
-        df2 = _fetch_eastmoney_minute(symbol, start, end, period)
+        df2 = _fetch_sina_minute(symbol, period)
         if df2 is not None:
             return df2
+        df3 = _fetch_eastmoney_minute(symbol, start, end, period)
+        if df3 is not None:
+            return df3
         raise ValueError(f"分钟数据获取失败（period={period}）")
 
     # 日/周/月线：使用腾讯
@@ -297,7 +335,7 @@ def get_stock(code: str):
         kline_data = []
         for idx, (_, row) in enumerate(df.iterrows()):
             kline_data.append({
-                "date": row.name.strftime("%Y-%m-%d") if hasattr(row.name, "strftime") else str(row.name)[:10],
+                "date": _format_kline_date(row.name, period),
                 "open": float(row["open"]),
                 "high": float(row["high"]),
                 "low": float(row["low"]),
