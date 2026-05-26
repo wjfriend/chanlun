@@ -6,7 +6,7 @@
 
 ## Phase 1: 修 Bug
 - [x] 分钟线K线图不显示 — 数据层修复（akshare分钟数据）
-- [x] 缠论画图错误（笔/线段/中枢/买卖点）— process_inclusion crash bug 已修复（2026-05-26）
+- [x] 缠论画图错误（笔/线段/中枢/买卖点）— process_inclusion crash bug + 买卖点噪声过滤（2026-05-26）
 
 ## Phase 2: ZenChart UI 功能（已截图存档）
 - [ ] 1. 非全屏默认视图
