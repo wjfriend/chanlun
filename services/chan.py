@@ -279,41 +279,84 @@ def find_signals(
 
     prices = [k["close"] for k in klines]
     if macd is None:
-        macd = [0] * len(klines)
+        macd = [0.0] * len(klines)
 
-    # ---- 1买/1卖：基于顶底分型 + MACD背驰 ----
-    for i in range(5, len(klines) - 5):
-        # 1买：价格创局部新低，但MACD没有创新低（底背驰）
-        window_prices = prices[i - 5 : i]
-        window_macd = macd[i - 5 : i]
+    window_size = 20  # 扩大窗口减少噪声
+    min_distance = 10  # 同类型信号最小间距
 
+    def _add_signal(signal_list: list[int], idx: int) -> None:
+        """去重：同区域只取第一个，间距不足不追加"""
+        if not signal_list:
+            signal_list.append(idx)
+            return
+        if idx - signal_list[-1] < min_distance:
+            return  # 间距不足，跳过
+        signal_list.append(idx)
+
+    # ---- 1买：底背驰（20根窗口内价格新低 + MACD未新低）----
+    for i in range(window_size, len(klines) - window_size):
+        window_prices = prices[i - window_size : i]
+        window_macd = macd[i - window_size : i]
+
+        # 价格：创20根窗口内新低
         is_local_low = prices[i] <= min(window_prices)
+        # MACD：未随价格创新低（背驰）
         macd_not_new_low = macd[i] >= min(window_macd)
+
         if is_local_low and macd_not_new_low:
-            signals["buy_1"].append(i)
+            _add_signal(signals["buy_1"], i)
 
-        # 1卖：价格创局部新高，但MACD没有创新高（顶背驰）
-        window_prices_high = prices[i - 5 : i]
-        window_macd_high = macd[i - 5 : i]
+    # ---- 1卖：顶背驰（20根窗口内价格新高 + MACD未创新高）----
+    for i in range(window_size, len(klines) - window_size):
+        window_prices = prices[i - window_size : i]
+        window_macd = macd[i - window_size : i]
 
-        is_local_high = prices[i] >= max(window_prices_high)
-        macd_not_new_high = macd[i] <= max(window_macd_high)
+        is_local_high = prices[i] >= max(window_prices)
+        macd_not_new_high = macd[i] <= max(window_macd)
+
         if is_local_high and macd_not_new_high:
-            signals["sell_1"].append(i)
+            _add_signal(signals["sell_1"], i)
 
     # ---- 2买：1买后向上运行，回调不破1买低点 ----
+    # 扫描每个1买之后的次级回调低点
     for buy1_idx in signals["buy_1"]:
-        # 在1买后寻找回调低点
-        for j in range(buy1_idx + 1, min(buy1_idx + 20, len(klines))):
-            if prices[j] < prices[buy1_idx]:
-                signals["buy_2"].append(j)
+        search_end = min(buy1_idx + 30, len(klines) - 1)
+        buy1_price = prices[buy1_idx]
+
+        # 找第一段上涨（从1买位置向上找明显上涨）
+        rise_start = buy1_idx
+        for j in range(buy1_idx + 1, search_end):
+            if prices[j] > buy1_price * 1.01:  # 涨超1%认为开始上涨
+                rise_start = j
+                break
+
+        # 从上涨终点回调，找不破1买低点的位置
+        for j in range(rise_start + 3, min(rise_start + 20, search_end)):
+            if prices[j] < buy1_price:  # 跌破1买，2买作废
+                break
+            # 回调结束（开始反弹）
+            if j + 1 < len(prices) and prices[j] < prices[j + 1]:
+                _add_signal(signals["buy_2"], j)
                 break
 
     # ---- 2卖：1卖后向下运行，反弹不破1卖高点 ----
     for sell1_idx in signals["sell_1"]:
-        for j in range(sell1_idx + 1, min(sell1_idx + 20, len(klines))):
-            if prices[j] > prices[sell1_idx]:
-                signals["sell_2"].append(j)
+        search_end = min(sell1_idx + 30, len(klines) - 1)
+        sell1_price = prices[sell1_idx]
+
+        # 找第一段下跌
+        fall_start = sell1_idx
+        for j in range(sell1_idx + 1, search_end):
+            if prices[j] < sell1_price * 0.99:  # 跌超1%认为开始下跌
+                fall_start = j
+                break
+
+        # 从下跌终点反弹，找不破1卖高点的位置
+        for j in range(fall_start + 3, min(fall_start + 20, search_end)):
+            if prices[j] > sell1_price:  # 涨破1卖，2卖作废
+                break
+            if j + 1 < len(prices) and prices[j] > prices[j + 1]:
+                _add_signal(signals["sell_2"], j)
                 break
 
     # ---- 3买：突破中枢后，回踩不破中枢上轨 ----
@@ -322,13 +365,13 @@ def find_signals(
         zd = zs["zd"]
         zs_end = zs["end_idx"]
 
-        for i in range(zs_end, min(zs_end + 15, len(klines))):
+        # 从中枢结束位置往后找突破
+        for i in range(zs_end + 1, min(zs_end + 30, len(klines))):
             if prices[i] > zg:  # 突破中枢上轨
-                # 检查后续回踩
-                for j in range(i + 1, min(i + 15, len(klines))):
-                    if prices[j] < zg and prices[j] > zd:
-                        # 回踩确认，构成3买
-                        signals["buy_3"].append(j)
+                # 在突破后找回踩确认
+                for j in range(i + 2, min(i + 20, len(klines))):
+                    if prices[j] < zg and prices[j] > zd:  # 回踩不破上轨
+                        _add_signal(signals["buy_3"], j)
                         break
                 break
 
@@ -338,11 +381,11 @@ def find_signals(
         zg = zs["zg"]
         zs_end = zs["end_idx"]
 
-        for i in range(zs_end, min(zs_end + 15, len(klines))):
+        for i in range(zs_end + 1, min(zs_end + 30, len(klines))):
             if prices[i] < zd:  # 跌破中枢下轨
-                for j in range(i + 1, min(i + 15, len(klines))):
+                for j in range(i + 2, min(i + 20, len(klines))):
                     if prices[j] > zd and prices[j] < zg:
-                        signals["sell_3"].append(j)
+                        _add_signal(signals["sell_3"], j)
                         break
                 break
 
