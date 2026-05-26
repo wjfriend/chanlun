@@ -47,6 +47,7 @@ class ChanResult(TypedDict):
     segments: list[dict]
     zhongshu: list[ZongshuDict]
     signals: SignalDict
+    processed_klines: list[dict]  # 处理包含关系后的K线，前端渲染用这组数据
 
 
 def process_inclusion(klines: list[dict]) -> list[dict]:
@@ -83,23 +84,25 @@ def process_inclusion(klines: list[dict]) -> list[dict]:
 
         # curr 包含 prev（需要融合）
         if curr_h >= prev_h and curr_l <= prev_l:
-            # 确定趋势：至少需要2根确定趋势
+            # 确定趋势：根据前一根的方向
             if len(processed) >= 2:
                 pprev = processed[-2]
-                trend = "up" if pprev["high"] > pprev["low"] else "down"
+                # 趋势方向：前一根的收盘相对再前一根的收盘
+                trend = "up" if prev["close"] > pprev["close"] else "down"
             else:
                 trend = "up"
 
             if trend == "up":
                 new_high = max(prev_h, curr_h)
-                new_low = max(prev["open"], curr_o)
+                new_low = max(prev_l, curr_l)
                 new_close = max(prev["close"], curr_c)
             else:
                 new_high = min(prev_h, curr_h)
-                new_low = min(prev["open"], curr_o)
+                new_low = min(prev_l, curr_l)
                 new_close = min(prev["close"], curr_c)
 
-            processed[-1] = {"open": min(prev["open"], curr_o), "high": new_high, "low": new_low, "close": new_close}
+            new_open = (max(prev["open"], curr_o) if trend == "up" else min(prev["open"], curr_o))
+            processed[-1] = {"open": new_open, "high": new_high, "low": new_low, "close": new_close}
             continue
 
         # 无包含关系，直接保留
@@ -386,6 +389,7 @@ def full_analysis(klines: list[dict], macd: list[float] | None = None) -> ChanRe
         "segments": segments,
         "zhongshu": all_zhongshu,
         "signals": signals,
+        "processed_klines": processed,
     }
 
 
