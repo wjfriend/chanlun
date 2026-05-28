@@ -380,15 +380,37 @@ def get_chan(code: str):
     try:
         df = get_stock_data(code, start, end, period)
 
-        # 构造 list[dict] 传给缠论服务
+        # 构建date->volume映射（来自原始df，用于缠论API响应附带volume）
+        # 支持列名"volume"，也支持从df.index取datetime
+        date_to_vol = {}
+        for i in range(len(df)):
+            row = df.iloc[i]
+            if "date" in df.columns:
+                d = str(row["date"])
+            else:
+                d = str(df.index[i])
+            if "volume" in df.columns:
+                date_to_vol[d] = float(row["volume"])
+            else:
+                date_to_vol[d] = 0.0
+
+        # 构造 list[dict] 传给缠论服务（含date用于processed返回）
         klines: list[dict] = []
         for idx in range(len(df)):
             row = df.iloc[idx]
+            # 尝试取date字段（列优先，其次用index）
+            row_date = ""
+            if "date" in df.columns:
+                row_date = str(row["date"])
+            elif hasattr(df, "index") and idx < len(df):
+                row_date = str(df.index[idx])
+            # sina/腾讯的日线数据date格式已经是字符串，直接用
             klines.append({
                 "open": float(row["open"]),
                 "high": float(row["high"]),
                 "low": float(row["low"]),
                 "close": float(row["close"]),
+                "date": row_date,
             })
 
         # MACD 值（用于背驰判断）
@@ -397,6 +419,72 @@ def get_chan(code: str):
 
         # 完整缠论分析
         result = full_analysis(klines, macd=macd_vals if macd_vals else None)
+
+        # 为processed_klines附加指标数据（前端子图渲染需要）
+        proc = result["processed_klines"]
+        proc_closes = [k["close"] for k in proc]
+        proc_highs = [k["high"] for k in proc]
+        proc_lows = [k["low"] for k in proc]
+        proc_volumes = [0] * len(proc)  # processed klines体积不可用，用0
+
+        macd_vals_p, macd_sig_p, macd_hist_p = calc_macd(proc_closes)
+        ma_data = calc_ma(proc_closes)
+        boll_u, boll_m, boll_l = calc_boll(proc_closes)
+        rsi_vals = calc_rsi(proc_closes)
+        k_vals, d_vals, j_vals = calc_kdj(proc_highs, proc_lows, proc_closes)
+        obv_vals = calc_obv(proc_closes, proc_volumes)
+        cci_vals = calc_cci(proc_highs, proc_lows, proc_closes)
+        stoch_k, stoch_d = calc_stoch_rsi(proc_closes)
+
+        for i, k in enumerate(proc):
+            k["MA5"] = ma_data[5][i] if i < len(ma_data.get(5, [])) else 0
+            k["MA10"] = ma_data[10][i] if i < len(ma_data.get(10, [])) else 0
+            k["MA20"] = ma_data[20][i] if i < len(ma_data.get(20, [])) else 0
+            k["MA60"] = ma_data[60][i] if i < len(ma_data.get(60, [])) else 0
+            k["MACD"] = macd_vals_p[i] if i < len(macd_vals_p) else 0
+            k["MACD_signal"] = macd_sig_p[i] if i < len(macd_sig_p) else 0
+            k["MACD_hist"] = macd_hist_p[i] if i < len(macd_hist_p) else 0
+            k["BOLL_upper"] = boll_u[i] if i < len(boll_u) else 0
+            k["BOLL_mid"] = boll_m[i] if i < len(boll_m) else 0
+            k["BOLL_lower"] = boll_l[i] if i < len(boll_l) else 0
+            k["RSI"] = rsi_vals[i] if i < len(rsi_vals) else 50
+            k["K"] = k_vals[i] if i < len(k_vals) else 50
+            k["D"] = d_vals[i] if i < len(d_vals) else 50
+            k["J"] = j_vals[i] if i < len(j_vals) else 50
+            k["CCI"] = cci_vals[i] if i < len(cci_vals) else 0
+            k["OBV"] = obv_vals[i] if i < len(obv_vals) else 0
+            k["StochRSI_K"] = stoch_k[i] if i < len(stoch_k) else 50
+            k["StochRSI_D"] = stoch_d[i] if i < len(stoch_d) else 50
+
+        # 序列化 processed_klines（含指标，供前端渲染用）
+        proc_data = []
+        for k in result["processed_klines"]:
+            proc_data.append({
+                "date": k.get("date", ""),
+                "open": k["open"],
+                "high": k["high"],
+                "low": k["low"],
+                "close": k["close"],
+                "volume": date_to_vol.get(k.get("date", ""), 0),
+                "MA5": k.get("MA5", 0),
+                "MA10": k.get("MA10", 0),
+                "MA20": k.get("MA20", 0),
+                "MA60": k.get("MA60", 0),
+                "MACD": k.get("MACD", 0),
+                "MACD_signal": k.get("MACD_signal", 0),
+                "MACD_hist": k.get("MACD_hist", 0),
+                "BOLL_upper": k.get("BOLL_upper", 0),
+                "BOLL_mid": k.get("BOLL_mid", 0),
+                "BOLL_lower": k.get("BOLL_lower", 0),
+                "RSI": k.get("RSI", 50),
+                "K": k.get("K", 50),
+                "D": k.get("D", 50),
+                "J": k.get("J", 50),
+                "CCI": k.get("CCI", 0),
+                "OBV": k.get("OBV", 0),
+                "StochRSI_K": k.get("StochRSI_K", 50),
+                "StochRSI_D": k.get("StochRSI_D", 50),
+            })
 
         # 序列化 bi（服务层返回 BiDict）
         bi_data = [
@@ -457,6 +545,7 @@ def get_chan(code: str):
             "segments": seg_data,
             "zhongshu": zs_data,
             "signals": signals_data,
+            "klines": proc_data,
             "total_klines": len(df),
         })
     except Exception as e:

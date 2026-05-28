@@ -70,7 +70,7 @@ def process_inclusion(klines: list[dict]) -> list[dict]:
         curr_c = curr["close"]
 
         if not processed:
-            processed.append({"open": curr_o, "high": curr_h, "low": curr_l, "close": curr_c})
+            processed.append({"open": curr_o, "high": curr_h, "low": curr_l, "close": curr_c, "date": curr.get("date")})
             continue
 
         prev = processed[-1]
@@ -102,11 +102,12 @@ def process_inclusion(klines: list[dict]) -> list[dict]:
                 new_close = min(prev["close"], curr_c)
 
             new_open = (max(prev["open"], curr_o) if trend == "up" else min(prev["open"], curr_o))
-            processed[-1] = {"open": new_open, "high": new_high, "low": new_low, "close": new_close}
+            new_date = curr.get("date", prev.get("date"))
+            processed[-1] = {"open": new_open, "high": new_high, "low": new_low, "close": new_close, "date": new_date}
             continue
 
         # 无包含关系，直接保留
-        processed.append({"open": curr_o, "high": curr_h, "low": curr_l, "close": curr_c})
+        processed.append({"open": curr_o, "high": curr_h, "low": curr_l, "close": curr_c, "date": curr.get("date")})
 
     return processed
 
@@ -166,6 +167,26 @@ def build_bi(
             prev_idx = idx
 
     return bi_list
+
+
+def _merge_consecutive_bi(bi_list: list[BiDict]) -> list[BiDict]:
+    """
+    合并连续同向笔。
+    两个方向相同的笔（都是向上笔或都是向下笔）如果连续出现，
+    合并为一笔（起点为第一个笔起点，终点为最后一个笔终点）。
+    这样可以去掉笔的碎片化（例如只走了2根K线就被反向分型打断的短笔）。
+    """
+    if len(bi_list) <= 1:
+        return bi_list
+    merged = [bi_list[0]]
+    for bi in bi_list[1:]:
+        prev = merged[-1]
+        # 类型相同则合并（去碎片化）
+        if bi["type"] == prev["type"]:
+            merged[-1] = {"start": prev["start"], "end": bi["end"], "type": prev["type"]}
+        else:
+            merged.append(bi)
+    return merged
 
 
 def build_segments(
@@ -410,6 +431,9 @@ def full_analysis(klines: list[dict], macd: list[float] | None = None) -> ChanRe
 
     # 3. 笔构建
     bi_list = build_bi(tops, bottoms, min_klines=4)
+
+    # 3b. 合并连续同向笔（去碎片化）
+    bi_list = _merge_consecutive_bi(bi_list)
 
     # 4. 线段构建
     segments = build_segments(bi_list, processed, min_bi_count=3)

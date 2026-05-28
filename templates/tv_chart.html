@@ -26,6 +26,8 @@
             background: #16213e;
             border-bottom: 1px solid #2a2a4a;
             height: 48px;
+            flex-shrink: 0;
+            z-index: 100;
         }
         .header-left { display: flex; align-items: center; gap: 12px; }
         .header h2 { color: #e94560; font-size: 1rem; margin: 0; }
@@ -35,7 +37,7 @@
         }
         .symbol-badge:hover { background: #ff6b6b; }
         .controls { display: flex; align-items: center; gap: 8px; }
-        .period-tabs { display: flex; gap: 2px; margin-left: 8px; }
+        .period-tabs { display: flex; gap: 2px; margin-left: 8px; flex-wrap: nowrap; overflow-x: auto; }
         .period-tab {
             padding: 4px 10px; font-size: 0.72rem; background: #2a2a4a;
             color: #777; border: 1px solid #3a3a5a; border-radius: 5px;
@@ -59,6 +61,8 @@
         #chart-wrapper {
             display: flex;
             height: calc(100vh - 48px);
+            transition: height 0.3s ease;
+            overflow: hidden;
         }
         #chart-area {
             flex: 1;
@@ -221,11 +225,10 @@
 
         <div id="chart-area">
             <div class="legend-overlay">
-                <div class="legend-item"><span class="swatch" style="background:#e94560;"></span>↑笔/段</div>
-                <div class="legend-item"><span class="swatch" style="background:#26a69a;"></span>↓笔/段</div>
-                <div class="legend-item"><span class="swatch" style="background:#2979ff;"></span>↑线段</div>
-                <div class="legend-item"><span class="swatch" style="background:#7c4dff;"></span>↓线段</div>
-                <div class="legend-item"><span class="swatch" style="background:#ffd700;"></span>中枢</div>
+                <div class="legend-item"><span class="swatch" style="background:#FFD700;"></span>笔</div>
+                <div class="legend-item"><span class="swatch" style="background:#E0E0E0;"></span>线段</div>
+                <div class="legend-item"><span class="swatch" style="background:#FFD700; border: 1px dashed #FFD700;"></span>笔中枢</div>
+                <div class="legend-item"><span class="swatch" style="background:#E0E0E0; border: 1px solid #E0E0E0;"></span>段中枢</div>
             </div>
 
             <div class="info-overlay" id="infoOverlay">
@@ -327,6 +330,8 @@
         function initChart() {
             const container = document.getElementById('chart-container');
             chart = LightweightCharts.createChart(container, {
+                width: container.clientWidth || 1200,
+                height: (container.clientHeight || 600),
                 layout: {
                     background: { color: '#1a1a2e' },
                     textColor: '#888',
@@ -344,6 +349,15 @@
                     borderColor: '#2a2a4a',
                     timeVisible: true,
                     secondsVisible: false,
+                    rightMargin: 0.05,
+                    leftMargin: 0.01,
+                    tickMarkFormatter: (time, tickType, locale) => {
+                        const d = new Date(time * 1000);
+                        const yy = d.getFullYear().toString().slice(-2);
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        return `${yy}年${mm}月${dd}`;
+                    },
                 },
                 rightPriceScale: {
                     borderColor: '#2a2a4a',
@@ -483,18 +497,12 @@
         async function loadData() {
             document.getElementById('loading').classList.add('show');
             try {
-                // K线数据
-                console.log('[loadData] requesting:', `/api/stock/${currentCode}?period=${currentPeriod}`);
-                const stockRes = await fetch(`/api/stock/${currentCode}?period=${currentPeriod}`);
-                const stockJson = await stockRes.json();
-                console.log('[loadData] received:', stockJson.success, 'bars:', stockJson.data?.length);
-                if (!stockJson.success) throw new Error(stockJson.error || 'K线数据加载失败');
-                klineData = stockJson.data;
-
-                // 缠论分析
+                // K线数据（改用缠论API的处理后K线，索引与bi/seg/zs完全对齐）
                 const chanRes = await fetch(`/api/chan/${currentCode}?period=${currentPeriod}`);
                 const chanJson = await chanRes.json();
-                chanResult = chanJson.success ? chanJson : null;
+                if (!chanJson.success) throw new Error(chanJson.error || '缠论数据加载失败');
+                klineData = chanJson.klines || [];
+                chanResult = chanJson;
 
                 // 渲染
                 renderChart();
@@ -584,8 +592,13 @@
                     if (document.getElementById('showZs').checked) addZhongshu();
                     addSignals();
                 }
-                // v5: 确保时间刻度适应数据
-                chart.timeScale().fitContent();
+                // 手动设置可见范围：覆盖整个数据集，前后各留5天边距
+                if (klineData.length > 0) {
+                    chart.timeScale().setVisibleRange({
+                        from: Math.floor(new Date(klineData[0].date).getTime() / 1000) - 86400 * 5,
+                        to: Math.floor(new Date(klineData[klineData.length - 1].date).getTime() / 1000) + 86400 * 5,
+                    });
+                }
             } catch (err) {
                 console.error('renderChart error:', err);
             }
@@ -714,7 +727,7 @@
             });
         }
 
-        // ========== 笔 ==========
+        // ========== 笔（黄色虚线，上下笔颜色统一）==========
         function addBi() {
             if (!chanResult) { console.log('[addBi] no chanResult'); return; }
             if (!chanResult.bi) { console.log('[addBi] no bi data'); return; }
@@ -722,9 +735,9 @@
             let drawn = 0;
             chanResult.bi.forEach(bi => {
                 if (bi.start >= klineData.length || bi.end >= klineData.length) { console.warn(`[addBi] OOB skip start=${bi.start} end=${bi.end} len=${klineData.length}`); return; }
-                const color = bi.type === 'bottom' ? '#ff5c7a' : '#1aedb8';
+                // 统一黄色虚线，不区分上下笔
                 const series = chart.addSeries(window._ls, {
-                    color: color, lineWidth: 1,
+                    color: '#FFD700', lineWidth: 1, lineStyle: 1, // dashed
                     priceLineVisible: false, lastValueVisible: false,
                 });
                 series.setData([
@@ -737,7 +750,7 @@
             console.log(`[addBi] drawn=${drawn}`);
         }
 
-        // ========== 线段 ==========
+        // ========== 线段（白色细实线）==========
         function addSegment() {
             if (!chanResult) { console.log('[addSegment] no chanResult'); return; }
             if (!chanResult.segments) { console.log('[addSegment] no segments data'); return; }
@@ -745,9 +758,9 @@
             let drawn = 0;
             chanResult.segments.forEach(seg => {
                 if (seg.start_idx >= klineData.length || seg.end_idx >= klineData.length) return;
-                const color = seg.direction === 'up' ? '#5cb8ff' : '#a87fff';
+                // 白色细实线，不区分方向
                 const series = chart.addSeries(window._ls, {
-                    color: color, lineWidth: 2,
+                    color: '#E0E0E0', lineWidth: 1, lineStyle: 0, // solid
                     priceLineVisible: false, lastValueVisible: false,
                 });
                 series.setData([
@@ -760,7 +773,7 @@
             console.log(`[addSegment] drawn=${drawn}`);
         }
 
-        // ========== 中枢 ==========
+        // ========== 中枢（笔中枢黄色虚线框，线段中枢白色实线框）==========
         function addZhongshu() {
             if (!chanResult) { console.log('[addZhongshu] no chanResult'); return; }
             if (!chanResult.zhongshu) { console.log('[addZhongshu] no zhongshu data'); return; }
@@ -768,31 +781,51 @@
             let drawn = 0;
             chanResult.zhongshu.forEach(zs => {
                 if (zs.start_idx >= klineData.length || zs.end_idx >= klineData.length) { console.warn(`[addZhongshu] OOB`); return; }
+
                 const t0 = Math.floor(new Date(klineData[zs.start_idx].date).getTime() / 1000);
                 const t1 = Math.floor(new Date(klineData[zs.end_idx].date).getTime() / 1000);
+                const t1Offset = t1 + 86400; // 加1天（秒）闭合矩形右边缘
 
-                // 用K线形式渲染矩形区域（wick表示价格范围）
-                const series = chart.addSeries(window._cs, {
-                    color: 'rgba(255,215,0,0.2)',
-                    borderColor: 'rgba(255,215,0,0.5)',
-                    borderVisible: true,
-                    wickVisible: true,
-                    upColor: 'transparent',
-                    downColor: 'transparent',
-                    wickUpColor: 'rgba(255,215,0,0.5)',
-                    wickDownColor: 'rgba(255,215,0,0.5)',
-                    priceLineVisible: false,
-                    lastValueVisible: false,
-                });
-                // 中枢价格范围：zd~zg, 中间值dg~gg作为wick范围
-                const midPrice = (zs.zg + zs.zd) / 2;
-                const wickHigh = Math.max(zs.gg, zs.zg);
-                const wickLow = Math.min(zs.dg, zs.zd);
-                series.setData([
-                    { time: t0, open: midPrice, high: wickHigh, low: wickLow, close: midPrice },
-                    { time: t1, open: midPrice, high: wickHigh, low: wickLow, close: midPrice },
+                // 笔中枢：金色+虚线；线段中枢：白色+实线
+                const isBi = zs.source === 'bi';
+                const lineColor = isBi ? '#FFD700' : '#E0E0E0';
+                const ls = isBi ? 1 : 0; // 1=dashed, 0=solid
+                const lw = 1;
+
+                const makeLine = (price, tFrom, tTo) => {
+                    const s = chart.addSeries(window._ls, {
+                        color: lineColor,
+                        lineWidth: lw,
+                        lineStyle: ls,
+                        priceLineVisible: false,
+                        lastValueVisible: false,
+                    });
+                    s.setData([
+                        { time: tFrom, value: price },
+                        { time: tTo, value: price },
+                    ]);
+                    return s;
+                };
+
+                // 顶边（zg）
+                zsRectsList.push(makeLine(zs.zg, t0, t1Offset));
+                // 底边（zd）
+                zsRectsList.push(makeLine(zs.zd, t0, t1Offset));
+                // 左边（从zd到zg，垂直边）
+                const leftLine = makeLine(zs.zg, t0, t0);
+                leftLine.setData([
+                    { time: t0, value: zs.zd },
+                    { time: t0, value: zs.zg },
                 ]);
-                zsRectsList.push(series);
+                zsRectsList.push(leftLine);
+                // 右边（从zd到zg，垂直边）
+                const rightLine = makeLine(zs.zg, t1Offset, t1Offset);
+                rightLine.setData([
+                    { time: t1Offset, value: zs.zd },
+                    { time: t1Offset, value: zs.zg },
+                ]);
+                zsRectsList.push(rightLine);
+
                 drawn++;
             });
             console.log(`[addZhongshu] drawn=${drawn}`);
@@ -804,36 +837,66 @@
             sell_1: true, sell_2: true, sell_3: true,
         };
 
-        // v5.2.0 markers API: 使用 createSeriesMarkers 而非 addMarkersSeries
+        // 使用 LineSeries + markers 显示买卖点（在K线实际价格位置，不堆在顶部）
+        // 每个信号类型单独一个series，避免marker重叠
         function addSignals() {
             if (!chanResult.signals) return;
-            const markerColors = {
+            const colorMap = {
                 buy_1: '#e94560', buy_2: '#ff6b6b', buy_3: '#ffb3b3',
                 sell_1: '#26a69a', sell_2: '#4db6ac', sell_3: '#80cbc4',
             };
-            const markerShapes = {
-                buy_1: 'arrowUp', buy_2: 'arrowUp', buy_3: 'arrowUp',
-                sell_1: 'arrowDown', sell_2: 'arrowDown', sell_3: 'arrowDown',
-            };
-
+            // 用水平线段显示买卖点（短线段在本周期K线价格位置）
             Object.entries(chanResult.signals).forEach(([key, indices]) => {
                 if (!signalVisibility[key]) return;
-                const markers = (indices || [])
-                    .filter(idx => idx < klineData.length)
-                    .map(idx => ({
-                        time: Math.floor(new Date(klineData[idx].date).getTime() / 1000),
-                        text: key.includes('buy') ? '买' : '卖',
-                        color: markerColors[key] || '#fff',
-                        shape: markerShapes[key] || 'circle',
+                const color = colorMap[key] || '#fff';
+                const isBuy = key.includes('buy');
+
+                indices.forEach(idx => {
+                    if (idx >= klineData.length) return;
+                    const k = klineData[idx];
+                    if (!k) return;
+                    const t = Math.floor(new Date(k.date).getTime() / 1000);
+                    // 买卖点画成一个小短线段：买在close价格，卖在close价格
+                    const price = parseFloat(k.close);
+                    if (!price || price <= 0) return;
+
+                    // 在K线右侧用小竖线表示买卖点
+                    const dotSeries = chart.addSeries(window._ls, {
+                        color: color,
+                        lineWidth: 2,
+                        priceLineVisible: false,
+                        lastValueVisible: false,
+                    });
+                    const tOffset = t + 86400 * 3; // 偏移3天避免遮挡K线
+                    dotSeries.setData([
+                        { time: t, value: price },
+                        { time: tOffset, value: price },
+                    ]);
+                    if (!window._signalSeriesList) window._signalSeriesList = [];
+                    window._signalSeriesList.push(dotSeries);
+
+                    // 同时在对应位置显示文字标注
+                    // 用createSeriesMarkers在正确价格位置显示箭头
+                    const markerSeries = LightweightCharts.createSeriesMarkers(candleSeries, {
+                        color: color,
+                        shape: isBuy ? 'arrowUp' : 'arrowDown',
+                        text: isBuy ? '多' : '空',
                         textColor: '#fff',
-                    }));
-                if (markers.length) {
-                    // v5.2.0 API: createSeriesMarkers(series) 返回 plugin API
-                    const markersPlugin = LightweightCharts.createSeriesMarkers(candleSeries);
-                    markersPlugin.setMarkers(markers);
-                    markerGroups[key] = markersPlugin;
-                }
+                        size: 1,
+                    });
+                    markerSeries.setMarkers([{
+                        time: t,
+                        position: isBuy ? 'belowBar' : 'aboveBar',
+                        color: color,
+                        shape: isBuy ? 'arrowUp' : 'arrowDown',
+                        text: isBuy ? '买' : '卖',
+                        textColor: '#fff',
+                    }]);
+                    if (!window._signalMarkerPlugins) window._signalMarkerPlugins = [];
+                    window._signalMarkerPlugins.push(markerSeries);
+                });
             });
+            console.log('[addSignals] 信号渲染完成');
         }
 
         // ========== 显示切换 ==========
@@ -873,14 +936,160 @@
             }
         }
 
+        // ========== 全屏/非全屏切换 ==========
+        let isFullscreen = false;
+
+        function toggleFullscreen() {
+            isFullscreen = !isFullscreen;
+            const wrapper = document.getElementById('chart-wrapper');
+            const btn = document.getElementById('btnFullscreen');
+            const btn2 = document.getElementById('btnFullscreen2');
+            if (isFullscreen) {
+                wrapper.classList.add('fullscreen');
+                wrapper.classList.remove('compact');
+                if (btn) btn.textContent = '⛶ 退出';
+                if (btn2) btn2.textContent = '⛶ 退出';
+            } else {
+                wrapper.classList.remove('fullscreen');
+                wrapper.classList.add('compact');
+                if (btn) btn.textContent = '⛶ 全屏';
+                if (btn2) btn2.textContent = '⛶ 全屏';
+            }
+            // 通知 chart 调整尺寸
+            setTimeout(() => {
+                if (chart) chart.resize(wrapper.clientWidth, wrapper.clientHeight);
+            }, 50);
+        }
+
+        // ========== 加载全部历史数据 ==========
+        async function loadAllHistory() {
+            const btn = document.getElementById('btnLoadAll');
+            if (!btn) return;
+            btn.disabled = true;
+            btn.textContent = '加载中...';
+            try {
+                // 尝试加载更长时间范围的数据
+                const start = '19900101';
+                const today = new Date();
+                const y = today.getFullYear();
+                const m = String(today.getMonth() + 1).padStart(2, '0');
+                const d = String(today.getDate()).padStart(2, '0');
+                const end = `${y}${m}${d}`;
+                const stockRes = await fetch(`/api/stock/${currentCode}?period=${currentPeriod}&start=${start}&end=${end}`);
+                const stockJson = await stockRes.json();
+                if (!stockJson.success) throw new Error(stockJson.error);
+
+                // 对齐缠论分析
+                const chanRes = await fetch(`/api/chan/${currentCode}?period=${currentPeriod}&start=${start}&end=${end}`);
+                const chanJson = await chanRes.json();
+
+                klineData = stockJson.data;
+                if (chanJson.success) chanResult = chanJson;
+                else chanResult = null;
+
+                renderChart();
+                btn.textContent = '已加载全部';
+            } catch (err) {
+                alert('加载历史数据失败: ' + err.message);
+                btn.disabled = false;
+                btn.textContent = '📜 全部历史';
+            }
+        }
+
+        // ========== ~ 键弹出指标菜单 ==========
+        function showIndicatorMenu() {
+            const existing = document.getElementById('indicatorMenu');
+            if (existing) { existing.remove(); return; }
+
+            const menu = document.createElement('div');
+            menu.id = 'indicatorMenu';
+            menu.style.cssText = `
+                position:fixed; top:60px; right:180px; z-index:9999;
+                background:rgba(22,33,62,0.98); border:1px solid #3a3a5a;
+                border-radius:8px; padding:12px 16px; min-width:200px;
+                font-size:0.8rem; color:#ccc; box-shadow:0 4px 20px rgba(0,0,0,0.5);
+            `;
+
+            const items = [
+                { label: '📊 成交量', id: 'showVol' },
+                { label: '📈 MA均线', id: 'showMA' },
+                { label: '📉 BOLL布林', id: 'showBOLL' },
+                { label: '〰️ RSI', id: 'showRSI' },
+                { label: '〰️ OBV能量', id: 'showOBV' },
+                { label: '〰️ CCI顺势', id: 'showCCI' },
+                { label: '〰️ StochRSI', id: 'showStochRSI' },
+                { label: '━ 笔', id: 'showBi' },
+                { label: '━ 线段', id: 'showSeg' },
+                { label: '▪ 中枢', id: 'showZs' },
+                { label: '指标面板总开关', id: 'showIndicators' },
+            ];
+
+            items.forEach(item => {
+                const checked = document.getElementById(item.id)?.checked;
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:4px 0; cursor:pointer;';
+                row.innerHTML = `
+                    <input type="checkbox" id="menu_${item.id}" ${checked ? 'checked' : ''} onchange="
+                        const src = document.getElementById('${item.id}');
+                        if(src) src.checked = this.checked;
+                        saveIndicatorState(); renderChart();
+                    ">
+                    <label for="menu_${item.id}" style="cursor:pointer;">${item.label}</label>
+                `;
+                menu.appendChild(row);
+            });
+
+            document.body.appendChild(menu);
+            // 点击外部关闭
+            setTimeout(() => {
+                document.addEventListener('click', function closeMenu(e) {
+                    if (!menu.contains(e.target)) {
+                        menu.remove();
+                        document.removeEventListener('click', closeMenu);
+                    }
+                });
+            }, 100);
+        }
+
+        // ========== 加载全部历史按钮可见性 ==========
+        function updateLoadAllButton() {
+            const btn = document.getElementById('btnLoadAll');
+            if (!btn) return;
+            // 只有当数据不是从一开始加载全部时显示按钮
+            if (klineData.length >= 500) {
+                btn.style.display = 'inline-block';
+            }
+        }
+
         // ========== 周期切换 ==========
         // 注意: 这里不能立即执行，因为 DOM 还未解析完成
         let periodSelectRegistered = false;
 
         // ========== 启动 (等 DOM 完全解析后再初始化) ==========
         document.addEventListener('DOMContentLoaded', () => {
-            const cont = document.getElementById('chart-container');
-            console.log('[DEBUG] DOM ready, container:', cont ? cont.offsetWidth + 'x' + cont.offsetHeight : 'not found');
+            const container = document.getElementById('chart-container');
+            console.log('[DEBUG] DOM ready, container:', container ? container.offsetWidth + 'x' + container.offsetHeight : 'not found');
+
+            // === 非全屏默认视图（compact模式）===
+            const wrapper = document.getElementById('chart-wrapper');
+            if (wrapper) wrapper.classList.add('compact');
+
+            // === 键盘快捷键 ===
+            document.addEventListener('keydown', (e) => {
+                // ~ 键弹出指标菜单
+                if (e.key === '`' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                    const tag = document.activeElement?.tagName;
+                    if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+                        e.preventDefault();
+                        showIndicatorMenu();
+                    }
+                }
+                // F11 全屏切换
+                if (e.key === 'F11') {
+                    e.preventDefault();
+                    toggleFullscreen();
+                }
+            });
 
             // 周期 Tab 高亮
             document.querySelectorAll('.period-tab').forEach(tab => {
@@ -919,6 +1128,10 @@
 
             initChart();
             loadData();
+            // 恢复指标可见性状态
+            setTimeout(() => restoreIndicatorState(), 100);
+            // 更新全部历史按钮可见性
+            setTimeout(() => updateLoadAllButton(), 500);
         });
     </script>
 </body>
