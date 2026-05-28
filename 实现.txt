@@ -24,6 +24,18 @@
 ## 测试结果
 （每次完成任务后记录）
 
+### 2026-05-28 缠论渲染更新 commit 52c166c
+- 修改文件: templates/tv_chart.html, services/chan.py, app.py
+- 验证: 日线 224 klines, 7笔(合并后原始18笔), 0中枢; M30 342 klines, 11笔, 1中枢
+- 笔合并算法: `_merge_consecutive_bi` 已验证工作正常(18→7) ✓，无OOB错误
+- API验证: curl 测试成功，kline数据格式正确
+
+### 待解决: K线不可见问题
+- 症状: 全屏黑，但鼠标移动时左上角OHLCV浮窗显示正确数据(说明蜡烛数据存在)
+- 原因分析: 可能与浏览器缩放、Dark Reader扩展、或 chart render timing有关
+- 尝试方案: setVisibleRange, 去掉fitContent, 显式width/height 均无效
+- 原始问题: 在添加缠论overlay之前蜡烛已不可见，说明问题在基础chart层
+
 ---
 
 ## ZenChart 参考截图功能点
